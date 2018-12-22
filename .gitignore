@@ -1,3 +1,9 @@
+*.idea
+nss
+nspr
+gyp
+dist
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
