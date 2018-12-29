@@ -8,7 +8,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/christopher-henderson/CACop/certutil"
+	"github.com/christopher-henderson/CACop/validation/certutil"
 
 	"github.com/mozilla/OneCRL-Tools/certdataDiffCCADB"
 )

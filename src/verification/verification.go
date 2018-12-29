@@ -2,7 +2,7 @@ package verification
 
 import (
 	"crypto/x509"
-	"github.com/christopher-henderson/CACop/certutil"
+	"github.com/christopher-henderson/CACop/validation/certutil"
 	log "github.com/sirupsen/logrus"
 )
 

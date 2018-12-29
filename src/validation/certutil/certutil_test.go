@@ -2,8 +2,9 @@ package certutil
 
 import (
 	"bytes"
-	"crypto"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/ocsp"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"testing"
@@ -263,35 +264,185 @@ func newCertutil(t *testing.T) Certutil {
 	return c
 }
 
+var entrustRevoked = []byte(`-----BEGIN CERTIFICATE-----
+MIIHBzCCBe+gAwIBAgIQCgFCfgAAAVRyc+CuL/oTBjANBgkqhkiG9w0BAQsFADBa
+MQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MRcwFQYDVQQLEw5UcnVz
+dElEIFNlcnZlcjEeMBwGA1UEAxMVVHJ1c3RJRCBTZXJ2ZXIgQ0EgQTUyMB4XDTE2
+MDUwMjE3MTExN1oXDTE5MDUwMjE3MTExN1owgYAxMDAuBgNVBAMTJ3NoYTJzc2wt
+dHJ1c3RpZHJldm9rZWQuaWRlbnRydXN0c3NsLmNvbTEXMBUGA1UEChMOSWRlblRy
+dXN0IEluYy4xFzAVBgNVBAcTDlNhbHQgTGFrZSBDaXR5MQ0wCwYDVQQIEwRVdGFo
+MQswCQYDVQQGEwJVUzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOHX
+Yqlp81R6aAWci5hR06lgVM6t04Lkv8brfBoxWtin+nsIQxGsYd64KIIyG4auoJPh
+mS7mUI2fDtrD+TBX987jbcU8Y8QWV96lAB+kJf+fKeOLh3puJ+x5eUInIcbgkJYB
+CEgJ/KAbm9clrQos8ZYpwD7UmIwHBx6OWUQUx/atfqa6DFV14OzTQUVidpTc2xPn
+YrbGEwZvBiNAJAUAmy+rjyOkLGFuhdG7Qz5wfnvrGpacmmDVhU18u1Z7mJlampfX
+cp1rvNwl5SDYGhAUzGzzS8jwa77EQ4LqsT5VoNoGqaCzQ9JmldmSvQSM1TjS+yrf
+LSWysitMkfmB6SZQZyECAwEAAaOCA6AwggOcMA4GA1UdDwEB/wQEAwIFoDCBhAYI
+KwYBBQUHAQEEeDB2MDAGCCsGAQUFBzABhiRodHRwOi8vY29tbWVyY2lhbC5vY3Nw
+LmlkZW50cnVzdC5jb20wQgYIKwYBBQUHMAKGNmh0dHA6Ly92YWxpZGF0aW9uLmlk
+ZW50cnVzdC5jb20vY2VydHMvdHJ1c3RpZGNhYTUyLnA3YzAfBgNVHSMEGDAWgBSi
+ViQ80NQVuei/eKMTEFhILhZU4TCCAicGA1UdIASCAh4wggIaMIIBCwYKYIZIAYb5
+LwAGAzCB/DBABggrBgEFBQcCARY0aHR0cHM6Ly9zZWN1cmUuaWRlbnRydXN0LmNv
+bS9jZXJ0aWZpY2F0ZXMvcG9saWN5L3RzLzCBtwYIKwYBBQUHAgIwgaoagadUaGlz
+IFRydXN0SUQgU2VydmVyIENlcnRpZmljYXRlIGhhcyBiZWVuIGlzc3VlZCBpbiBh
+Y2NvcmRhbmNlIHdpdGggSWRlblRydXN0J3MgVHJ1c3RJRCBDZXJ0aWZpY2F0ZSBQ
+b2xpY3kgZm91bmQgYXQgaHR0cHM6Ly9zZWN1cmUuaWRlbnRydXN0LmNvbS9jZXJ0
+aWZpY2F0ZXMvcG9saWN5L3RzLzCCAQcGBmeBDAECAjCB/DBABggrBgEFBQcCARY0
+aHR0cHM6Ly9zZWN1cmUuaWRlbnRydXN0LmNvbS9jZXJ0aWZpY2F0ZXMvcG9saWN5
+L3RzLzCBtwYIKwYBBQUHAgIwgaoagadUaGlzIFRydXN0SUQgU2VydmVyIENlcnRp
+ZmljYXRlIGhhcyBiZWVuIGlzc3VlZCBpbiBhY2NvcmRhbmNlIHdpdGggSWRlblRy
+dXN0J3MgVHJ1c3RJRCBDZXJ0aWZpY2F0ZSBQb2xpY3kgZm91bmQgYXQgaHR0cHM6
+Ly9zZWN1cmUuaWRlbnRydXN0LmNvbS9jZXJ0aWZpY2F0ZXMvcG9saWN5L3RzLzBF
+BgNVHR8EPjA8MDqgOKA2hjRodHRwOi8vdmFsaWRhdGlvbi5pZGVudHJ1c3QuY29t
+L2NybC90cnVzdGlkY2FhNTIuY3JsMDIGA1UdEQQrMCmCJ3NoYTJzc2wtdHJ1c3Rp
+ZHJldm9rZWQuaWRlbnRydXN0c3NsLmNvbTAdBgNVHQ4EFgQUEngJcGYvb0NX/O7S
+NwGaixKcslswHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMA0GCSqGSIb3
+DQEBCwUAA4IBAQAh7gtktGIrOt/zcXt8ncRgbyov+7DKA323jsvGGuUBMh5zF5Lv
+VEKvwl9qd4HPERyQmQHcizVfcfxlCRv5YwhYtZZl6OljXXgnqeFSor8w5LOdpgJ9
+75fNG4mbNz6BioSTP5OproQvI3rzx3EpcPdbU/K3qX/v1Rx6SSlC7andGSldAyhr
+FMj2byH1rB52l/dMGGVpjxGyU1gySpzRUpRSNgBCOouXnGhku2LmfB3jnMV7D2xt
+B2ZbycIBRcqwt29q7JxXtdBGHTWVl3Ku2C23JjyBTm83wsHz4CE7VZIRmUxm600z
+Qb0/9HFaCgI8mR7Ez4KdVrwxpBNU4UaunfHo
+-----END CERTIFICATE-----`)
+
+var entrustIntermediate = []byte(`-----BEGIN CERTIFICATE-----
+MIIG3zCCBMegAwIBAgIQAJv84kD9Vb7ZJp4MASwbdzANBgkqhkiG9w0BAQsFADBK
+MQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScwJQYDVQQDEx5JZGVu
+VHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwHhcNMTQwMzIwMTgwNTM4WhcNMjIw
+MzIwMTgwNTM4WjBaMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MRcw
+FQYDVQQLEw5UcnVzdElEIFNlcnZlcjEeMBwGA1UEAxMVVHJ1c3RJRCBTZXJ2ZXIg
+Q0EgQTUyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl2nXmZiFAj/p
+JkJ26PRzP6kyRCaQeC54V5EZoF12K0n5k1pdWs6C88LY5Uw2eisdDdump/6REnzt
+cgG3jKHF2syd/gn7V+IURw/onpGPlC2AMpOTA/UoeGi6fg9CtDF6BRQiUzPko61s
+j6++Y2uyMp/ZF7nJ4GB8mdYx4eSgtz+vsjKsfoyc3ALr4bwfFJy8kfey+0Lz4SAr
+y7+P87NwY/r3dSgCq8XUsO3qJX+HzTcUloM8QAIboJ4ZR3/zsMzFJWC4NRLxUesX
+3Pxbpdmb70BM13dx6ftFi37y42mwQmYXRpA6zUY98bAJb9z/7jNhyvzHLjztXgrR
+vyISaYBLIwIDAQABo4ICrzCCAqswgYkGCCsGAQUFBwEBBH0wezAwBggrBgEFBQcw
+AYYkaHR0cDovL2NvbW1lcmNpYWwub2NzcC5pZGVudHJ1c3QuY29tMEcGCCsGAQUF
+BzAChjtodHRwOi8vdmFsaWRhdGlvbi5pZGVudHJ1c3QuY29tL3Jvb3RzL2NvbW1l
+cmNpYWxyb290Y2ExLnA3YzAfBgNVHSMEGDAWgBTtRBnA0/AGi+6ke75C5yZUyI42
+djAPBgNVHRMBAf8EBTADAQH/MIIBMQYDVR0gBIIBKDCCASQwggEgBgRVHSAAMIIB
+FjBQBggrBgEFBQcCAjBEMEIWPmh0dHBzOi8vc2VjdXJlLmlkZW50cnVzdC5jb20v
+Y2VydGlmaWNhdGVzL3BvbGljeS90cy9pbmRleC5odG1sMAAwgcEGCCsGAQUFBwIC
+MIG0GoGxVGhpcyBUcnVzdElEIFNlcnZlciBDZXJ0aWZpY2F0ZSBoYXMgYmVlbiBp
+c3N1ZWQgaW4gYWNjb3JkYW5jZSB3aXRoIElkZW5UcnVzdCdzIFRydXN0SUQgQ2Vy
+dGlmaWNhdGUgUG9saWN5IGZvdW5kIGF0IGh0dHBzOi8vc2VjdXJlLmlkZW50cnVz
+dC5jb20vY2VydGlmaWNhdGVzL3BvbGljeS90cy9pbmRleC5odG1sMEoGA1UdHwRD
+MEEwP6A9oDuGOWh0dHA6Ly92YWxpZGF0aW9uLmlkZW50cnVzdC5jb20vY3JsL2Nv
+bW1lcmNpYWxyb290Y2ExLmNybDA7BgNVHSUENDAyBggrBgEFBQcDAQYIKwYBBQUH
+AwIGCCsGAQUFBwMFBggrBgEFBQcDBgYIKwYBBQUHAwcwDgYDVR0PAQH/BAQDAgGG
+MB0GA1UdDgQWBBSiViQ80NQVuei/eKMTEFhILhZU4TANBgkqhkiG9w0BAQsFAAOC
+AgEAm4oWcizMGDsjzYFKfWUKferHD1Vusclu4/dra0PCx3HctXJMnuXc4Ngvn6Ab
+BcanG0Uht+bkuC4TaaS3QMCl0LwcsIzlfRzDJdxIpREWHH8yoNoPafVN3u2iGiyT
+5qda4Ej4WQgOmmNiluZPk8a4d4MkAxyQdVF/AVVx6Or+9d+bkQenjPSxWVmi/bfW
+RBXq2AcD8Ej7AIU15dRnLEkESmJm4xtV2aqmCd0SSBGhJHYLcInUPzWVg1zcB5EQ
+78GOTue8UrZvbcYhOufHG0k5JX5HVoVZ6GSXKqn5kqbcHXT6adVoWT/BxZruZiKQ
+qkryoZoSywt7dDdDhpC2+oAOC+XwX2HJp2mrPaAea1+E4LM9C9iEDtjsn5FfsBz0
+VRbMRdaoayXzOlTRhF3pGU2LLCmrXy/pqpqAGYPxyHr3auRn9fjv77UMEqVFdfOc
+CspkK71IGqM9UwwMtCZBp0fK/Xv9o1d85paXcJ/aH8zg6EK4UkuXDFnLsg1LrIru
++YHeHOeSaXJlcjzwWVY/Exe5HymtqGH8klMhy65bjtapNt76+j2CJgxOdPEiTy/l
+9LH5ujlo5qgemXE3ePwYZ9D3iiJThTf3tWkvdbz2wCPJAy2EHS0FxHMfx5sXsFsa
+OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
+-----END CERTIFICATE-----`)
+
+var entrustRoot = []byte(`-----BEGIN CERTIFICATE-----
+MIIFYDCCA0igAwIBAgIQCgFCgAAAAUUjyES1AAAAAjANBgkqhkiG9w0BAQsFADBK
+MQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScwJQYDVQQDEx5JZGVu
+VHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwHhcNMTQwMTE2MTgxMjIzWhcNMzQw
+MTE2MTgxMjIzWjBKMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScw
+JQYDVQQDEx5JZGVuVHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwggIiMA0GCSqG
+SIb3DQEBAQUAA4ICDwAwggIKAoICAQCnUBneP5k91DNG8W9RYYKyqU+PZ4ldhNlT
+3Qwo2dfw/66VQ3KZ+bVdfIrBQuExUHTRgQ18zZshq0PirK1ehm7zCYofWjK9ouuU
++ehcCuz/mNKvcbO0U59Oh++SvL3sTzIwiEsXXlfEU8L2ApeN2WIrvyQfYo3fw7gp
+S0l4PJNgiCL8mdo2yMKi1CxUAGc1bnO/AljwpN3lsKImesrgNqUZFvX9t++uP0D1
+bVoE/c40yiTcdCMbXTMTEl3EASX2MN0CXZ/g1Ue9tOsbobtJSdifWwLziuQkkORi
+T0/Br4sOdBeo0XKIanoBScy0RnnGF7HamB4HWfp1IYVl3ZBWzvurpWCdxJ35UrCL
+vYf5jysjCiN2O/cz4ckA82n5S6LgTrx+kzmEB/dEcH7+B1rlsazRGMzyNeVJSQjK
+Vsk9+w8YfYs7wRPCTY/JTw436R+hDmrfYi7LNQZReSzIJTj0+kuniVyc0uMNOYZK
+dHzVWYfCP04MXFL0PfdSgvHqo6z9STQaKPNBiDoT7uje/5kdX7rL6B7yuVBgwDHT
+c+XvvqDtMwt0viAgxGds8AgDelWAf0ZOlqf0Hj7h9tgJ4TNkK2PXMl6f+cB7D3hv
+l7yTmvmcEpB4eoCHFddydJxVdHixuuFucAS6T6C6aMN7/zHwcz09lCqxC0EOoP5N
+iGVreTO01wIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB
+/zAdBgNVHQ4EFgQU7UQZwNPwBovupHu+QucmVMiONnYwDQYJKoZIhvcNAQELBQAD
+ggIBAA2ukDL2pkt8RHYZYR4nKM1eVO8lvOMIkPkp165oCOGUAFjvLi5+U1KMtlwH
+6oi6mYtQlNeCgN9hCQCTrQ0U5s7B8jeUeLBfnLOic7iPBZM4zY0+sLj7wM+x8uwt
+LRvM7Kqas6pgghstO8OEPVeKlh6cdbjTMM1gCIOQ045U8U1mwF10A0Cj7oV+wh93
+nAbowacYXVKV7cndJZ5t+qntozo00Fl72u1Q8zW/7esUTTHHYPTa8Yec4kjixsU3
++wYQ+nVZZjFHKdp2mhzpgq7vmrlR94gjmmmVYjzlVYA211QC//G5Xc7UI2/YRYRK
+W2XviQzdFKcgyxilJbQN+QHwotL0AMh0jqEqSI5l2xPE4iUXfeu+h1sXIFRRk0pT
+AwvsXcoz7WL9RccvW9xYoIA55vrX/hMUpu09lEpCdNTDd1lzzY9GvlU47/rokTLq
+l1gEIt44w8y8bckzOmoKaT+gyOpyj4xjhiO9bTyWnpXgSUyqorkqG5w2gXjtw+hG
+4iZZRHUe2XWJUc0QhJ1hYMtd+ZciTY6Y5uN/9lu7rs3KSoFrXgvzUeF0K+l+J6fZ
+mUlO+KWA2yUPHGNiiskzZ2s8EIPGrd6ozRaOjfAHN3Gf8qv8QfXBi+wAN10J5U6A
+7/qxXDgGpRtK4dw4LTzcqx+QGtVKnO7RcGzM7vRX+Bi6hG6H
+-----END CERTIFICATE-----`)
+
+var entrustChain = [][]byte{entrustRevoked, entrustIntermediate, entrustRoot}
+
+// Write integration tests against pulling these down.
 func TestGetThing(t *testing.T) {
-	url := "https://revokedec.entrust.net"
-	resp, err := http.DefaultClient.Get(url)
-	if err != nil {
-		t.Log(err)
-	}
 	var certs []*Certificate
-	for _, i := range resp.TLS.PeerCertificates {
-		cert := new(Certificate)
-		cert.Certificate = i
-		hasher := crypto.SHA256.New()
-		hasher.Write(cert.Raw)
-		cert.Fingerprint = string(hasher.Sum([]byte{}))
+	for _, c := range entrustChain {
+		cert := parseCertificate(c, t)
 		certs = append(certs, cert)
 	}
 	c := newCertutil(t)
+	//c, err := NewCerutilInto("/tmp")
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
 	defer c.Delete()
 	for _, cert := range certs {
 		out, err := c.Install(cert)
-		t.Log(cert.Subject.CommonName)
-		t.Log(cert.Issuer.CommonName)
+		//t.Log(cert.Subject.CommonName)
+		//t.Log(cert.Issuer.CommonName)
+		//t.Log(cert.Fingerprint)
 		if err != nil {
 			t.Fatal(errors.Wrapf(err, string(out)))
 		}
+		//t.Log(cert.CRLDistributionPoints)
+		//t.Log(cert.SerialNumber.String())
+		t.Log(cert.OCSPServer)
 	}
 	for _, cert := range certs {
 		out, err := c.Verify(cert)
 		if err != nil {
 			t.Fatal(errors.Wrapf(err, string(out)+" "+cert.Issuer.CommonName))
 		}
+		t.Log(string(out))
 	}
+}
+
+func TestOCSP(t *testing.T) {
+	var certs []*Certificate
+	for _, c := range entrustChain {
+		cert := parseCertificate(c, t)
+		certs = append(certs, cert)
+		t.Log(cert.OCSPServer, cert.Subject.CommonName)
+	}
+	leaf := certs[0]
+	req, err := ocsp.CreateRequest(leaf.Certificate, certs[1].Certificate, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responder := leaf.OCSPServer[0]
+	t.Log(responder)
+	//encoded := make([]byte, base64.URLEncoding.EncodedLen(len(req)))
+	//base64.URLEncoding.Encode(encoded, req)
+	ret, err := http.Post(responder, "application/ocsp-request", bytes.NewReader(req))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ret.Body.Close()
+	t.Log(ret.Request.URL)
+	b, err := ioutil.ReadAll(ret.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := ocsp.ParseResponse(b, certs[1].Certificate)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log(resp.Status == ocsp.Good)
 }

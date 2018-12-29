@@ -1,10 +1,10 @@
 package certutil
 
 import (
-	"crypto/sha256"
+	"crypto"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/pem"
+	"fmt"
 )
 
 type Fingerprint = string
@@ -22,8 +22,12 @@ func NewCertificate(encodedPEM []byte) (*Certificate, error) {
 		return cert, err
 	}
 	cert.Certificate = x509cert
-	hasher := sha256.New()
-	hasher.Write(cert.Raw)
-	cert.Fingerprint = base64.StdEncoding.EncodeToString(hasher.Sum([]byte{}))
+	cert.Fingerprint = FingerprintOf(cert)
 	return cert, nil
+}
+
+func FingerprintOf(cert *Certificate) Fingerprint {
+	hasher := crypto.SHA256.New()
+	hasher.Write(cert.Raw)
+	return fmt.Sprintf("%x", hasher.Sum(nil))
 }

@@ -13,6 +13,30 @@ import (
 )
 
 const (
+	//-u certusage      Specify certificate usage:
+	//C 	 SSL Client
+	//V 	 SSL Server
+	//I 	 IPsec
+	//L 	 SSL CA
+	//A 	 Any CA
+	//Y 	 Verify CA
+	//S 	 Email signer
+	//R 	 Email Recipient
+	//O 	 OCSP status responder
+	//J 	 Object signer
+	CertUsageSSLClient           = "C"
+	CertUsageSSLServer           = "V"
+	CertUsageIPsec               = "I"
+	CertUsageSSLCA               = "L"
+	CertUsageAnyCA               = "A"
+	CertUsageVerifyCA            = "y"
+	CertUsageEmailSigner         = "S"
+	CertUsageEmailRecipient      = "R"
+	CertUsageOCSPStatusResponder = "O"
+	CertUsageObjectSigner        = "J"
+)
+
+const (
 	NewCertificateDatabase = "-N"
 	NoPassword             = "--empty-password"
 	CertDbDirectory        = "-d"
@@ -21,7 +45,7 @@ const (
 	CertName    = "-n"
 	TrustArgs   = "-t"
 	TrustedPeer = "P,p,p"
-	TrustedCA   = "C,p,p"
+	TrustedCA   = "C"
 
 	Verify          = "-V"
 	VerifySignature = "-e"
@@ -56,16 +80,25 @@ type Certutil struct {
 	tmpDir string
 }
 
-func NewCertutil() (certutil Certutil, err error) {
+func NewCertutil() (Certutil, error) {
 	tmpDir, err := ioutil.TempDir("", "")
 	if err != nil {
-		return
+		return Certutil{}, err
 	}
-	certutil.tmpDir = tmpDir
+	return NewCerutilInto(tmpDir)
+}
+
+func NewCerutilInto(dir string) (certutil Certutil, err error) {
+	certutil.tmpDir = dir
 	out, err := execute([]string{NewCertificateDatabase, NoPassword, CertDbDirectory, certutil.tmpDir})
 	if err != nil {
 		log.Println(string(out))
 	}
+	return
+}
+
+func CertUtilFrom(dir string) (certutil Certutil) {
+	certutil.tmpDir = dir
 	return
 }
 
@@ -93,16 +126,6 @@ func (c Certutil) Install(cert *Certificate) ([]byte, error) {
 		TrustArgs, trustArgs,
 		CertName, cert.Fingerprint,
 		CertDbDirectory, c.tmpDir,
-		"-4",
-	}, cert.Raw...)
-}
-
-func (c Certutil) InstallCA(cert *Certificate) ([]byte, error) {
-	return execute([]string{
-		InstallCert,
-		TrustArgs, "C",
-		CertName, cert.Fingerprint,
-		CertDbDirectory, c.tmpDir,
 	}, cert.Raw...)
 }
 
@@ -121,25 +144,17 @@ func (c Certutil) Verify(cert *Certificate) ([]byte, error) {
 	var certUsage string
 	switch cert.IsCA {
 	case true:
-		certUsage = "L"
+		certUsage = CertUsageSSLCA
 	case false:
-		certUsage = "V"
+		certUsage = CertUsageSSLServer
 	}
 	return execute([]string{
 		Verify,
-		"-e",
+		VerifySignature,
 		CertName, cert.Fingerprint,
 		CertUsage, certUsage,
 		CertDbDirectory, c.tmpDir,
-	})
-}
-
-func (c Certutil) VerifyCA(cert *Certificate) ([]byte, error) {
-	return execute([]string{
-		Verify,
-		CertName, cert.Fingerprint,
-		CertUsage, "L",
-		CertDbDirectory, c.tmpDir,
+		"-4",
 	})
 }
 

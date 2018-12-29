@@ -3,7 +3,7 @@ package verification
 import (
 	"crypto/x509"
 	"encoding/pem"
-	"github.com/christopher-henderson/CACop/certutil"
+	"github.com/christopher-henderson/CACop/validation/certutil"
 	"log"
 	"testing"
 )
@@ -32,7 +32,7 @@ AAGjggTwMIIE7DAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwEG
 CCsGAQUFBwMCMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFBn3p/3O4C1DQdui8FEX
 NiyF/EhSMB8GA1UdIwQYMBaAFKhKamMEfd265tE5t6ZFZe/zqOyhMG8GCCsGAQUF
 BwEBBGMwYTAuBggrBgEFBQcwAYYiaHR0cDovL29jc3AuaW50LXgzLmxldHNlbmNy
-eXB0Lm9yZzAvBggrBgEFBQcwAoYjaHR0cDovL2NlcnQuaW50LXgzLmxldHNlbmNy
+eXB0Lm9yZzAvBggrBgEFBQcwAowYjaHR0cDovL2NlcnQuaW50LXgzLmxldHNlbmNy
 eXB0Lm9yZy8wggHxBgNVHREEggHoMIIB5IIbY2VydC5pbnQteDEubGV0c2VuY3J5
 cHQub3JnghtjZXJ0LmludC14Mi5sZXRzZW5jcnlwdC5vcmeCG2NlcnQuaW50LXgz
 LmxldHNlbmNyeXB0Lm9yZ4IbY2VydC5pbnQteDQubGV0c2VuY3J5cHQub3Jnghxj
