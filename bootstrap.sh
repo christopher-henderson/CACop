@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 
-install_gyp() {
-	git clone https://chromium.googlesource.com/external/gyp
-	cd gyp
-	./setup.py
-}
+set -e
 
 which gyp
 if [ $? -ne 0 ]; then
-	install_gyp
+	git clone https://chromium.googlesource.com/external/gyp
+    cd gyp
+    ./setup.py
 fi
 
 which ninja
@@ -26,6 +24,3 @@ if [ $? -ne 0 ]; then
 	echo "build failed"
 	exit 1
 fi
-
-cd ..
-mkdir -p bin/lok/tar/ogar

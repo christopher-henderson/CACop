@@ -1,0 +1,387 @@
+package certutil
+
+import (
+	"bytes"
+	"crypto/x509"
+	"encoding/pem"
+	"github.com/pkg/errors"
+	"log"
+	"testing"
+)
+
+const DIST = "/Users/chris/Documents/Contracting/mozilla/testWebSites/dist/Debug"
+
+func init() {
+	if err := Init(DIST); err != nil {
+		log.Panic(err)
+	}
+}
+
+var letsencrypt = []byte(`-----BEGIN CERTIFICATE-----
+MIIH5jCCBs6gAwIBAgISA1D/hn92MdZxKQOTmA2iFrUHMA0GCSqGSIb3DQEBCwUA
+MEoxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MSMwIQYDVQQD
+ExpMZXQncyBFbmNyeXB0IEF1dGhvcml0eSBYMzAeFw0xODEwMDUxODExNTdaFw0x
+OTAxMDMxODExNTdaMB4xHDAaBgNVBAMTE3d3dy5sZXRzZW5jcnlwdC5vcmcwggEi
+MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDTefxpwDYnmn2zqwLHd8csu9HC
+c33k9rbIMWkbQcXSTT/j8n6Wkzc4N9dK0AQv99u2y30JzJE9wniXw0eB4obTds15
+u88rkbI8F33F+aFtliRgSYjr7XmWPjNpeQUozRBRsnP2Bsskd6NwUM/Y3Aqp7hcp
+jA/+s0Zpcvf09G5HFaWPhG+pZLPS+F5mN+6Zu/h3xH/QF8SGXmhLVk5FgGcZrEto
+FJZP6sJLo3wSQjS1ZC68CpAtXla1zA1R9nDFf0GMiAxzase/urBPa5uaGTi9nyGc
+gh+OIYGODfOd7ox48iaA/QMTZkCr/2tyPGN6ZT3Ac6JyTBvlbiHkJqrQImAJAgMB
+AAGjggTwMIIE7DAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwEG
+CCsGAQUFBwMCMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFBn3p/3O4C1DQdui8FEX
+NiyF/EhSMB8GA1UdIwQYMBaAFKhKamMEfd265tE5t6ZFZe/zqOyhMG8GCCsGAQUF
+BwEBBGMwYTAuBggrBgEFBQcwAYYiaHR0cDovL29jc3AuaW50LXgzLmxldHNlbmNy
+eXB0Lm9yZzAvBggrBgEFBQcwAoYjaHR0cDovL2NlcnQuaW50LXgzLmxldHNlbmNy
+eXB0Lm9yZy8wggHxBgNVHREEggHoMIIB5IIbY2VydC5pbnQteDEubGV0c2VuY3J5
+cHQub3JnghtjZXJ0LmludC14Mi5sZXRzZW5jcnlwdC5vcmeCG2NlcnQuaW50LXgz
+LmxldHNlbmNyeXB0Lm9yZ4IbY2VydC5pbnQteDQubGV0c2VuY3J5cHQub3Jnghxj
+ZXJ0LnJvb3QteDEubGV0c2VuY3J5cHQub3Jngh9jZXJ0LnN0YWdpbmcteDEubGV0
+c2VuY3J5cHQub3Jngh9jZXJ0LnN0Zy1pbnQteDEubGV0c2VuY3J5cHQub3JngiBj
+ZXJ0LnN0Zy1yb290LXgxLmxldHNlbmNyeXB0Lm9yZ4ISY3AubGV0c2VuY3J5cHQu
+b3JnghpjcC5yb290LXgxLmxldHNlbmNyeXB0Lm9yZ4ITY3BzLmxldHNlbmNyeXB0
+Lm9yZ4IbY3BzLnJvb3QteDEubGV0c2VuY3J5cHQub3Jnghtjcmwucm9vdC14MS5s
+ZXRzZW5jcnlwdC5vcmeCD2xldHNlbmNyeXB0Lm9yZ4IWb3JpZ2luLmxldHNlbmNy
+eXB0Lm9yZ4IXb3JpZ2luMi5sZXRzZW5jcnlwdC5vcmeCFnN0YXR1cy5sZXRzZW5j
+cnlwdC5vcmeCE3d3dy5sZXRzZW5jcnlwdC5vcmcwgf4GA1UdIASB9jCB8zAIBgZn
+gQwBAgEwgeYGCysGAQQBgt8TAQEBMIHWMCYGCCsGAQUFBwIBFhpodHRwOi8vY3Bz
+LmxldHNlbmNyeXB0Lm9yZzCBqwYIKwYBBQUHAgIwgZ4MgZtUaGlzIENlcnRpZmlj
+YXRlIG1heSBvbmx5IGJlIHJlbGllZCB1cG9uIGJ5IFJlbHlpbmcgUGFydGllcyBh
+bmQgb25seSBpbiBhY2NvcmRhbmNlIHdpdGggdGhlIENlcnRpZmljYXRlIFBvbGlj
+eSBmb3VuZCBhdCBodHRwczovL2xldHNlbmNyeXB0Lm9yZy9yZXBvc2l0b3J5LzCC
+AQQGCisGAQQB1nkCBAIEgfUEgfIA8AB2AG9Tdqwx8DEZ2JkApFEV/3cVHBHZAsEA
+KQaNsgiaN9kTAAABZkWkxE0AAAQDAEcwRQIhAOOzwbkufRWHlbBjEX5nfXo6E+s/
+N8gf3KMikZPrTG/FAiBuMalnDo6pgwMIEZxYa2KyDohLoqo6lPA28/klsecEvAB2
+AGPy283oO8wszwtyhCdXazOkjWF3j711pjixx2hUS9iNAAABZkWkw4IAAAQDAEcw
+RQIhAOS09dkvx+SPg4maZ9niWCWzeF9H3SSnSF0Q1zH8mdTZAiBvYic/XxvMAShT
+XfSc0/EtLg5Sft1D4667DAT7mQgu0jANBgkqhkiG9w0BAQsFAAOCAQEAeHiwK8y1
+PhKU+fkiVEOrt3pj4vQlw7NhIyBnc/IEm/aC+Bx8p1cCifoiFSnV138lMe+oKToS
+jmRNGZuXqr0Rg5Igwe0H/wbc2GmDaW1qSvfJ+7UjfJUHmNWxX5Nm/iFZ/HCDqWSG
+lXbLgLyAYoD2VJKgLtrlnSOgQH2lp/z/CUxam1hk5aG7GUpau/dYphdUdMSchS+A
+B8ktad7hW6c9C6dDuSK53raN5p501s3snTy7MbchO14xvfqn7E6DCEDnqwUuqaCz
+sLjyuvFWMn7YytIssrlr/cNGUz1q3v3WQ7ZfgR2IuMncorKCrhwfTNq59dciaCHZ
+goZ3NpE9UY447g==
+-----END CERTIFICATE-----`)
+
+var letsencryptIntermediate = []byte(`-----BEGIN CERTIFICATE-----
+MIIEkjCCA3qgAwIBAgIQCgFBQgAAAVOFc2oLheynCDANBgkqhkiG9w0BAQsFADA/
+MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
+DkRTVCBSb290IENBIFgzMB4XDTE2MDMxNzE2NDA0NloXDTIxMDMxNzE2NDA0Nlow
+SjELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUxldCdzIEVuY3J5cHQxIzAhBgNVBAMT
+GkxldCdzIEVuY3J5cHQgQXV0aG9yaXR5IFgzMIIBIjANBgkqhkiG9w0BAQEFAAOC
+AQ8AMIIBCgKCAQEAnNMM8FrlLke3cl03g7NoYzDq1zUmGSXhvb418XCSL7e4S0EF
+q6meNQhY7LEqxGiHC6PjdeTm86dicbp5gWAf15Gan/PQeGdxyGkOlZHP/uaZ6WA8
+SMx+yk13EiSdRxta67nsHjcAHJyse6cF6s5K671B5TaYucv9bTyWaN8jKkKQDIZ0
+Z8h/pZq4UmEUEz9l6YKHy9v6Dlb2honzhT+Xhq+w3Brvaw2VFn3EK6BlspkENnWA
+a6xK8xuQSXgvopZPKiAlKQTGdMDQMc2PMTiVFrqoM7hD8bEfwzB/onkxEz0tNvjj
+/PIzark5McWvxI0NHWQWM6r6hCm21AvA2H3DkwIDAQABo4IBfTCCAXkwEgYDVR0T
+AQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAYYwfwYIKwYBBQUHAQEEczBxMDIG
+CCsGAQUFBzABhiZodHRwOi8vaXNyZy50cnVzdGlkLm9jc3AuaWRlbnRydXN0LmNv
+bTA7BggrBgEFBQcwAoYvaHR0cDovL2FwcHMuaWRlbnRydXN0LmNvbS9yb290cy9k
+c3Ryb290Y2F4My5wN2MwHwYDVR0jBBgwFoAUxKexpHsscfrb4UuQdf/EFWCFiRAw
+VAYDVR0gBE0wSzAIBgZngQwBAgEwPwYLKwYBBAGC3xMBAQEwMDAuBggrBgEFBQcC
+ARYiaHR0cDovL2Nwcy5yb290LXgxLmxldHNlbmNyeXB0Lm9yZzA8BgNVHR8ENTAz
+MDGgL6AthitodHRwOi8vY3JsLmlkZW50cnVzdC5jb20vRFNUUk9PVENBWDNDUkwu
+Y3JsMB0GA1UdDgQWBBSoSmpjBH3duubRObemRWXv86jsoTANBgkqhkiG9w0BAQsF
+AAOCAQEA3TPXEfNjWDjdGBX7CVW+dla5cEilaUcne8IkCJLxWh9KEik3JHRRHGJo
+uM2VcGfl96S8TihRzZvoroed6ti6WqEBmtzw3Wodatg+VyOeph4EYpr/1wXKtx8/
+wApIvJSwtmVi4MFU5aMqrSDE6ea73Mj2tcMyo5jMd6jmeWUHK8so/joWUoHOUgwu
+X4Po1QYz+3dszkDqMp4fklxBwXRsW10KXzPMTZ+sOPAveyxindmjkW8lGy+QsRlG
+PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6
+KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
+-----END CERTIFICATE-----`)
+
+var letsencryptRoot = []byte(`-----BEGIN CERTIFICATE-----
+MIIDSjCCAjKgAwIBAgIQRK+wgNajJ7qJMDmGLvhAazANBgkqhkiG9w0BAQUFADA/
+MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
+DkRTVCBSb290IENBIFgzMB4XDTAwMDkzMDIxMTIxOVoXDTIxMDkzMDE0MDExNVow
+PzEkMCIGA1UEChMbRGlnaXRhbCBTaWduYXR1cmUgVHJ1c3QgQ28uMRcwFQYDVQQD
+Ew5EU1QgUm9vdCBDQSBYMzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
+AN+v6ZdQCINXtMxiZfaQguzH0yxrMMpb7NnDfcdAwRgUi+DoM3ZJKuM/IUmTrE4O
+rz5Iy2Xu/NMhD2XSKtkyj4zl93ewEnu1lcCJo6m67XMuegwGMoOifooUMM0RoOEq
+OLl5CjH9UL2AZd+3UWODyOKIYepLYYHsUmu5ouJLGiifSKOeDNoJjj4XLh7dIN9b
+xiqKqy69cK3FCxolkHRyxXtqqzTWMIn/5WgTe1QLyNau7Fqckh49ZLOMxt+/yUFw
+7BZy1SbsOFU5Q9D8/RhcQPGX69Wam40dutolucbY38EVAjqr2m7xPi71XAicPNaD
+aeQQmxkqtilX4+U9m5/wAl0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNV
+HQ8BAf8EBAMCAQYwHQYDVR0OBBYEFMSnsaR7LHH62+FLkHX/xBVghYkQMA0GCSqG
+SIb3DQEBBQUAA4IBAQCjGiybFwBcqR7uKGY3Or+Dxz9LwwmglSBd49lZRNI+DT69
+ikugdB/OEIKcdBodfpga3csTS7MgROSR6cz8faXbauX+5v3gTt23ADq1cEmv8uXr
+AvHRAosZy5Q6XkjEGB5YGV8eAlrwDPGxrancWYaLbumR9YbK+rlmM6pZW87ipxZz
+R8srzJmwN0jP41ZL9c8PDHIyh8bwRLtTcm1D9SZImlJnt1ir/md2cXjbDaJWFBM5
+JDGFoqgCWjBH4d1QB7wCCZAA62RjYJsWvIjJEubSfZGL+T0yjWW06XyxV3bqxbYo
+Ob8VZRzI9neWagqNdwvYkQsEjgfbKbYK7p2CNTUQ
+-----END CERTIFICATE-----`)
+
+var letsencryptChain = [][]byte{letsencrypt, letsencryptIntermediate, letsencryptRoot}
+
+var expiredEnstrust = []byte(`-----BEGIN CERTIFICATE-----
+MIIFpjCCBSygAwIBAgIRAL6LReEn8jaqAAAAAFagKQEwCgYIKoZIzj0EAwIwgbox
+CzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1FbnRydXN0LCBJbmMuMSgwJgYDVQQLEx9T
+ZWUgd3d3LmVudHJ1c3QubmV0L2xlZ2FsLXRlcm1zMTkwNwYDVQQLEzAoYykgMjAx
+NiBFbnRydXN0LCBJbmMuIC0gZm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxLjAsBgNV
+BAMTJUVudHJ1c3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgLSBMMUowHhcNMTcw
+NjA2MTM1MTI2WhcNMTcwNjA3MTQyMTE4WjCByDELMAkGA1UEBhMCQ0ExEDAOBgNV
+BAgTB09udGFyaW8xDzANBgNVBAcTBkthbmF0YTETMBEGCysGAQQBgjc8AgEDEwJV
+UzEWMBQGCysGAQQBgjc8AgECEwVUZXhhczEWMBQGA1UEChMNRW50cnVzdCwgSW5j
+LjEdMBsGA1UEDxMUUHJpdmF0ZSBPcmdhbml6YXRpb24xEjAQBgNVBAUTCTExNTg2
+ODUwMDEeMBwGA1UEAxMVZXhwaXJlZGVjLmVudHJ1c3QubmV0MFkwEwYHKoZIzj0C
+AQYIKoZIzj0DAQcDQgAERxqiqJI9x2VZq86/GIcczmkw9qEFqBjvewc+B9EZHOa+
+27CXSaNFL50esl9SOeAHDvYBjQZdOUbLHLm2K5pBc6OCAwEwggL9MCAGA1UdEQQZ
+MBeCFWV4cGlyZWRlYy5lbnRydXN0Lm5ldDCCAYEGCisGAQQB1nkCBAIEggFxBIIB
+bQFrAHcA7ku9t3XOYLrhQmkfq+GeZqMPfl+wctiDAMR7iXqo/csAAAFcfcgi4gAA
+BAMASDBGAiEA43UHIurGfd4GSSRpQy7dRPgB2PWmtkLt17jz4a08r3UCIQDKUnKY
+QkWYejTvEe0A7uYK/28rKIq+t/DuVcqr+ft8swB3AFYUBpov18Ls0/XhvUSyPsdG
+drm8mRFcwO+UmFXWidDdAAABXH3IJc8AAAQDAEgwRgIhAPeabTr2GM6/oC5laF8X
+QYUL+XIPIvw7LJBXETbthi/EAiEAooISlTQsFtI//i7d1rmkcaHyH+mY1CGBJkwN
+CrhFIrcAdwCkuQmQtBhYFIe7E6LMZ3AKPDWYBPkb37jjd80OyA3cEAAAAVx9yCbe
+AAAEAwBIMEYCIQDBRC6y2kkJjAKrhXk4AOLtjF1x0EtS2M+AOfq+LHtazAIhANE3
+StntO7+VjR0tE7b+jU9VwjBxnxASoKOdyTgdOvxdMA4GA1UdDwEB/wQEAwIHgDAT
+BgNVHSUEDDAKBggrBgEFBQcDATBjBggrBgEFBQcBAQRXMFUwIwYIKwYBBQUHMAGG
+F2h0dHA6Ly9vY3NwLmVudHJ1c3QubmV0MC4GCCsGAQUFBzAChiJodHRwOi8vYWlh
+LmVudHJ1c3QubmV0L2wxai1lYzEuY2VyMDMGA1UdHwQsMCowKKAmoCSGImh0dHA6
+Ly9jcmwuZW50cnVzdC5uZXQvbGV2ZWwxai5jcmwwSgYDVR0gBEMwQTA2BgpghkgB
+hvpsCgECMCgwJgYIKwYBBQUHAgEWGmh0dHA6Ly93d3cuZW50cnVzdC5uZXQvcnBh
+MAcGBWeBDAEBMB8GA1UdIwQYMBaAFMP5RQO+yPkLPEU18+ty7Ofo65SbMB0GA1Ud
+DgQWBBRnLUA80+dPY+cg+vx7O/iK/e0lRzAJBgNVHRMEAjAAMAoGCCqGSM49BAMC
+A2gAMGUCMQDKTonUpaa+kPAtGe8uJQpvILHFNQQlL7IMkfw7KwimpWOLM2Zuuu3c
+xSl3uLJD1wACME4Mk3XWRUFXAR8d//6kfcWjmI/6sgtAwbqRnWeFyoSG2WEvYyoy
+2i8EqeX8hBfDZA==
+-----END CERTIFICATE-----
+`)
+
+func TestInt(t *testing.T) {
+	cert := parseCertificate(letsencryptIntermediate, t)
+	t.Log(cert.Issuer.CommonName == cert.Subject.CommonName)
+}
+
+func TestChainListing(t *testing.T) {
+	certs := parseCertficates(letsencryptChain, t)
+	c := newCertutil(t)
+	defer c.Delete()
+	for _, cert := range certs {
+		c.Install(cert)
+	}
+	t.Log(c.ListChain(certs[0]))
+	for _, cert := range certs {
+		out, err := c.Verify(cert)
+		t.Log(string(out), err)
+	}
+
+}
+
+func TestCertutilValid(t *testing.T) {
+	certutil, err := NewCertutil()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer certutil.Delete()
+	cert := parseCertificate(letsencrypt, t)
+	out, err := certutil.Install(cert)
+	if err != nil {
+		t.Log(string(out))
+		t.Fatal(err)
+	}
+	out, err = certutil.Verify(cert)
+	if err != nil {
+		t.Log(string(out))
+		t.Fatal(err)
+	}
+	if !bytes.HasSuffix(out, []byte("certificate is valid")) {
+		t.Fatal(string(out))
+	}
+}
+
+func TestCertutilInvalid(t *testing.T) {
+	certutil, err := NewCertutil()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer certutil.Delete()
+	cert := parseCertificate(expiredEnstrust, t)
+	out, err := certutil.Install(cert)
+	if err != nil {
+		t.Log(string(out))
+		t.Fatal(err)
+	}
+	out, err = certutil.Verify(cert)
+	if err == nil {
+		t.Fatal("Expected an error from certutil")
+	}
+	if !bytes.HasSuffix(out, []byte("Peer's Certificate has expired.")) {
+		t.Fatal(string(out))
+	}
+}
+
+func parseCertificate(c []byte, t *testing.T) *x509.Certificate {
+	block, _ := pem.Decode(c)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
+}
+
+func parseCertficates(cs [][]byte, t *testing.T) []*x509.Certificate {
+	var certs []*x509.Certificate
+	for _, c := range cs {
+		certs = append(certs, parseCertificate(c, t))
+	}
+	return certs
+}
+
+func newCertutil(t *testing.T) Certutil {
+	c, err := NewCertutil()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+var entrustRevoked = []byte(`-----BEGIN CERTIFICATE-----
+MIIHBzCCBe+gAwIBAgIQCgFCfgAAAVRyc+CuL/oTBjANBgkqhkiG9w0BAQsFADBa
+MQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MRcwFQYDVQQLEw5UcnVz
+dElEIFNlcnZlcjEeMBwGA1UEAxMVVHJ1c3RJRCBTZXJ2ZXIgQ0EgQTUyMB4XDTE2
+MDUwMjE3MTExN1oXDTE5MDUwMjE3MTExN1owgYAxMDAuBgNVBAMTJ3NoYTJzc2wt
+dHJ1c3RpZHJldm9rZWQuaWRlbnRydXN0c3NsLmNvbTEXMBUGA1UEChMOSWRlblRy
+dXN0IEluYy4xFzAVBgNVBAcTDlNhbHQgTGFrZSBDaXR5MQ0wCwYDVQQIEwRVdGFo
+MQswCQYDVQQGEwJVUzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOHX
+Yqlp81R6aAWci5hR06lgVM6t04Lkv8brfBoxWtin+nsIQxGsYd64KIIyG4auoJPh
+mS7mUI2fDtrD+TBX987jbcU8Y8QWV96lAB+kJf+fKeOLh3puJ+x5eUInIcbgkJYB
+CEgJ/KAbm9clrQos8ZYpwD7UmIwHBx6OWUQUx/atfqa6DFV14OzTQUVidpTc2xPn
+YrbGEwZvBiNAJAUAmy+rjyOkLGFuhdG7Qz5wfnvrGpacmmDVhU18u1Z7mJlampfX
+cp1rvNwl5SDYGhAUzGzzS8jwa77EQ4LqsT5VoNoGqaCzQ9JmldmSvQSM1TjS+yrf
+LSWysitMkfmB6SZQZyECAwEAAaOCA6AwggOcMA4GA1UdDwEB/wQEAwIFoDCBhAYI
+KwYBBQUHAQEEeDB2MDAGCCsGAQUFBzABhiRodHRwOi8vY29tbWVyY2lhbC5vY3Nw
+LmlkZW50cnVzdC5jb20wQgYIKwYBBQUHMAKGNmh0dHA6Ly92YWxpZGF0aW9uLmlk
+ZW50cnVzdC5jb20vY2VydHMvdHJ1c3RpZGNhYTUyLnA3YzAfBgNVHSMEGDAWgBSi
+ViQ80NQVuei/eKMTEFhILhZU4TCCAicGA1UdIASCAh4wggIaMIIBCwYKYIZIAYb5
+LwAGAzCB/DBABggrBgEFBQcCARY0aHR0cHM6Ly9zZWN1cmUuaWRlbnRydXN0LmNv
+bS9jZXJ0aWZpY2F0ZXMvcG9saWN5L3RzLzCBtwYIKwYBBQUHAgIwgaoagadUaGlz
+IFRydXN0SUQgU2VydmVyIENlcnRpZmljYXRlIGhhcyBiZWVuIGlzc3VlZCBpbiBh
+Y2NvcmRhbmNlIHdpdGggSWRlblRydXN0J3MgVHJ1c3RJRCBDZXJ0aWZpY2F0ZSBQ
+b2xpY3kgZm91bmQgYXQgaHR0cHM6Ly9zZWN1cmUuaWRlbnRydXN0LmNvbS9jZXJ0
+aWZpY2F0ZXMvcG9saWN5L3RzLzCCAQcGBmeBDAECAjCB/DBABggrBgEFBQcCARY0
+aHR0cHM6Ly9zZWN1cmUuaWRlbnRydXN0LmNvbS9jZXJ0aWZpY2F0ZXMvcG9saWN5
+L3RzLzCBtwYIKwYBBQUHAgIwgaoagadUaGlzIFRydXN0SUQgU2VydmVyIENlcnRp
+ZmljYXRlIGhhcyBiZWVuIGlzc3VlZCBpbiBhY2NvcmRhbmNlIHdpdGggSWRlblRy
+dXN0J3MgVHJ1c3RJRCBDZXJ0aWZpY2F0ZSBQb2xpY3kgZm91bmQgYXQgaHR0cHM6
+Ly9zZWN1cmUuaWRlbnRydXN0LmNvbS9jZXJ0aWZpY2F0ZXMvcG9saWN5L3RzLzBF
+BgNVHR8EPjA8MDqgOKA2hjRodHRwOi8vdmFsaWRhdGlvbi5pZGVudHJ1c3QuY29t
+L2NybC90cnVzdGlkY2FhNTIuY3JsMDIGA1UdEQQrMCmCJ3NoYTJzc2wtdHJ1c3Rp
+ZHJldm9rZWQuaWRlbnRydXN0c3NsLmNvbTAdBgNVHQ4EFgQUEngJcGYvb0NX/O7S
+NwGaixKcslswHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMA0GCSqGSIb3
+DQEBCwUAA4IBAQAh7gtktGIrOt/zcXt8ncRgbyov+7DKA323jsvGGuUBMh5zF5Lv
+VEKvwl9qd4HPERyQmQHcizVfcfxlCRv5YwhYtZZl6OljXXgnqeFSor8w5LOdpgJ9
+75fNG4mbNz6BioSTP5OproQvI3rzx3EpcPdbU/K3qX/v1Rx6SSlC7andGSldAyhr
+FMj2byH1rB52l/dMGGVpjxGyU1gySpzRUpRSNgBCOouXnGhku2LmfB3jnMV7D2xt
+B2ZbycIBRcqwt29q7JxXtdBGHTWVl3Ku2C23JjyBTm83wsHz4CE7VZIRmUxm600z
+Qb0/9HFaCgI8mR7Ez4KdVrwxpBNU4UaunfHo
+-----END CERTIFICATE-----`)
+
+var entrustIntermediate = []byte(`-----BEGIN CERTIFICATE-----
+MIIG3zCCBMegAwIBAgIQAJv84kD9Vb7ZJp4MASwbdzANBgkqhkiG9w0BAQsFADBK
+MQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScwJQYDVQQDEx5JZGVu
+VHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwHhcNMTQwMzIwMTgwNTM4WhcNMjIw
+MzIwMTgwNTM4WjBaMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MRcw
+FQYDVQQLEw5UcnVzdElEIFNlcnZlcjEeMBwGA1UEAxMVVHJ1c3RJRCBTZXJ2ZXIg
+Q0EgQTUyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl2nXmZiFAj/p
+JkJ26PRzP6kyRCaQeC54V5EZoF12K0n5k1pdWs6C88LY5Uw2eisdDdump/6REnzt
+cgG3jKHF2syd/gn7V+IURw/onpGPlC2AMpOTA/UoeGi6fg9CtDF6BRQiUzPko61s
+j6++Y2uyMp/ZF7nJ4GB8mdYx4eSgtz+vsjKsfoyc3ALr4bwfFJy8kfey+0Lz4SAr
+y7+P87NwY/r3dSgCq8XUsO3qJX+HzTcUloM8QAIboJ4ZR3/zsMzFJWC4NRLxUesX
+3Pxbpdmb70BM13dx6ftFi37y42mwQmYXRpA6zUY98bAJb9z/7jNhyvzHLjztXgrR
+vyISaYBLIwIDAQABo4ICrzCCAqswgYkGCCsGAQUFBwEBBH0wezAwBggrBgEFBQcw
+AYYkaHR0cDovL2NvbW1lcmNpYWwub2NzcC5pZGVudHJ1c3QuY29tMEcGCCsGAQUF
+BzAChjtodHRwOi8vdmFsaWRhdGlvbi5pZGVudHJ1c3QuY29tL3Jvb3RzL2NvbW1l
+cmNpYWxyb290Y2ExLnA3YzAfBgNVHSMEGDAWgBTtRBnA0/AGi+6ke75C5yZUyI42
+djAPBgNVHRMBAf8EBTADAQH/MIIBMQYDVR0gBIIBKDCCASQwggEgBgRVHSAAMIIB
+FjBQBggrBgEFBQcCAjBEMEIWPmh0dHBzOi8vc2VjdXJlLmlkZW50cnVzdC5jb20v
+Y2VydGlmaWNhdGVzL3BvbGljeS90cy9pbmRleC5odG1sMAAwgcEGCCsGAQUFBwIC
+MIG0GoGxVGhpcyBUcnVzdElEIFNlcnZlciBDZXJ0aWZpY2F0ZSBoYXMgYmVlbiBp
+c3N1ZWQgaW4gYWNjb3JkYW5jZSB3aXRoIElkZW5UcnVzdCdzIFRydXN0SUQgQ2Vy
+dGlmaWNhdGUgUG9saWN5IGZvdW5kIGF0IGh0dHBzOi8vc2VjdXJlLmlkZW50cnVz
+dC5jb20vY2VydGlmaWNhdGVzL3BvbGljeS90cy9pbmRleC5odG1sMEoGA1UdHwRD
+MEEwP6A9oDuGOWh0dHA6Ly92YWxpZGF0aW9uLmlkZW50cnVzdC5jb20vY3JsL2Nv
+bW1lcmNpYWxyb290Y2ExLmNybDA7BgNVHSUENDAyBggrBgEFBQcDAQYIKwYBBQUH
+AwIGCCsGAQUFBwMFBggrBgEFBQcDBgYIKwYBBQUHAwcwDgYDVR0PAQH/BAQDAgGG
+MB0GA1UdDgQWBBSiViQ80NQVuei/eKMTEFhILhZU4TANBgkqhkiG9w0BAQsFAAOC
+AgEAm4oWcizMGDsjzYFKfWUKferHD1Vusclu4/dra0PCx3HctXJMnuXc4Ngvn6Ab
+BcanG0Uht+bkuC4TaaS3QMCl0LwcsIzlfRzDJdxIpREWHH8yoNoPafVN3u2iGiyT
+5qda4Ej4WQgOmmNiluZPk8a4d4MkAxyQdVF/AVVx6Or+9d+bkQenjPSxWVmi/bfW
+RBXq2AcD8Ej7AIU15dRnLEkESmJm4xtV2aqmCd0SSBGhJHYLcInUPzWVg1zcB5EQ
+78GOTue8UrZvbcYhOufHG0k5JX5HVoVZ6GSXKqn5kqbcHXT6adVoWT/BxZruZiKQ
+qkryoZoSywt7dDdDhpC2+oAOC+XwX2HJp2mrPaAea1+E4LM9C9iEDtjsn5FfsBz0
+VRbMRdaoayXzOlTRhF3pGU2LLCmrXy/pqpqAGYPxyHr3auRn9fjv77UMEqVFdfOc
+CspkK71IGqM9UwwMtCZBp0fK/Xv9o1d85paXcJ/aH8zg6EK4UkuXDFnLsg1LrIru
++YHeHOeSaXJlcjzwWVY/Exe5HymtqGH8klMhy65bjtapNt76+j2CJgxOdPEiTy/l
+9LH5ujlo5qgemXE3ePwYZ9D3iiJThTf3tWkvdbz2wCPJAy2EHS0FxHMfx5sXsFsa
+OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
+-----END CERTIFICATE-----`)
+
+var entrustRoot = []byte(`-----BEGIN CERTIFICATE-----
+MIIFYDCCA0igAwIBAgIQCgFCgAAAAUUjyES1AAAAAjANBgkqhkiG9w0BAQsFADBK
+MQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScwJQYDVQQDEx5JZGVu
+VHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwHhcNMTQwMTE2MTgxMjIzWhcNMzQw
+MTE2MTgxMjIzWjBKMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScw
+JQYDVQQDEx5JZGVuVHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwggIiMA0GCSqG
+SIb3DQEBAQUAA4ICDwAwggIKAoICAQCnUBneP5k91DNG8W9RYYKyqU+PZ4ldhNlT
+3Qwo2dfw/66VQ3KZ+bVdfIrBQuExUHTRgQ18zZshq0PirK1ehm7zCYofWjK9ouuU
++ehcCuz/mNKvcbO0U59Oh++SvL3sTzIwiEsXXlfEU8L2ApeN2WIrvyQfYo3fw7gp
+S0l4PJNgiCL8mdo2yMKi1CxUAGc1bnO/AljwpN3lsKImesrgNqUZFvX9t++uP0D1
+bVoE/c40yiTcdCMbXTMTEl3EASX2MN0CXZ/g1Ue9tOsbobtJSdifWwLziuQkkORi
+T0/Br4sOdBeo0XKIanoBScy0RnnGF7HamB4HWfp1IYVl3ZBWzvurpWCdxJ35UrCL
+vYf5jysjCiN2O/cz4ckA82n5S6LgTrx+kzmEB/dEcH7+B1rlsazRGMzyNeVJSQjK
+Vsk9+w8YfYs7wRPCTY/JTw436R+hDmrfYi7LNQZReSzIJTj0+kuniVyc0uMNOYZK
+dHzVWYfCP04MXFL0PfdSgvHqo6z9STQaKPNBiDoT7uje/5kdX7rL6B7yuVBgwDHT
+c+XvvqDtMwt0viAgxGds8AgDelWAf0ZOlqf0Hj7h9tgJ4TNkK2PXMl6f+cB7D3hv
+l7yTmvmcEpB4eoCHFddydJxVdHixuuFucAS6T6C6aMN7/zHwcz09lCqxC0EOoP5N
+iGVreTO01wIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB
+/zAdBgNVHQ4EFgQU7UQZwNPwBovupHu+QucmVMiONnYwDQYJKoZIhvcNAQELBQAD
+ggIBAA2ukDL2pkt8RHYZYR4nKM1eVO8lvOMIkPkp165oCOGUAFjvLi5+U1KMtlwH
+6oi6mYtQlNeCgN9hCQCTrQ0U5s7B8jeUeLBfnLOic7iPBZM4zY0+sLj7wM+x8uwt
+LRvM7Kqas6pgghstO8OEPVeKlh6cdbjTMM1gCIOQ045U8U1mwF10A0Cj7oV+wh93
+nAbowacYXVKV7cndJZ5t+qntozo00Fl72u1Q8zW/7esUTTHHYPTa8Yec4kjixsU3
++wYQ+nVZZjFHKdp2mhzpgq7vmrlR94gjmmmVYjzlVYA211QC//G5Xc7UI2/YRYRK
+W2XviQzdFKcgyxilJbQN+QHwotL0AMh0jqEqSI5l2xPE4iUXfeu+h1sXIFRRk0pT
+AwvsXcoz7WL9RccvW9xYoIA55vrX/hMUpu09lEpCdNTDd1lzzY9GvlU47/rokTLq
+l1gEIt44w8y8bckzOmoKaT+gyOpyj4xjhiO9bTyWnpXgSUyqorkqG5w2gXjtw+hG
+4iZZRHUe2XWJUc0QhJ1hYMtd+ZciTY6Y5uN/9lu7rs3KSoFrXgvzUeF0K+l+J6fZ
+mUlO+KWA2yUPHGNiiskzZ2s8EIPGrd6ozRaOjfAHN3Gf8qv8QfXBi+wAN10J5U6A
+7/qxXDgGpRtK4dw4LTzcqx+QGtVKnO7RcGzM7vRX+Bi6hG6H
+-----END CERTIFICATE-----`)
+
+var entrustChain = [][]byte{entrustRevoked, entrustIntermediate, entrustRoot}
+
+// Write integration tests against pulling these down.
+func TestGetThing(t *testing.T) {
+	var certs []*x509.Certificate
+	for _, c := range entrustChain {
+		cert := parseCertificate(c, t)
+		certs = append(certs, cert)
+	}
+	c := newCertutil(t)
+	//c, err := NewCerutilInto("/tmp")
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	defer c.Delete()
+	for _, cert := range certs {
+		out, err := c.Install(cert)
+		//t.Log(cert.Subject.CommonName)
+		//t.Log(cert.Issuer.CommonName)
+		//t.Log(cert.Fingerprint)
+		if err != nil {
+			t.Fatal(errors.Wrapf(err, string(out)))
+		}
+		//t.Log(cert.CRLDistributionPoints)
+		//t.Log(cert.SerialNumber.String())
+		t.Log(cert.OCSPServer)
+	}
+	for _, cert := range certs {
+		out, err := c.Verify(cert)
+		if err != nil {
+			t.Fatal(errors.Wrapf(err, string(out)+" "+cert.Issuer.CommonName))
+		}
+		t.Log(string(out))
+	}
+}

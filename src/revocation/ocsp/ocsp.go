@@ -3,9 +3,9 @@ package ocsp
 import (
 	"bytes"
 	"crypto/x509"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
-	"log"
 	"net/http"
 )
 
@@ -43,101 +43,64 @@ import (
 //
 // CertStatus ::= CHOICE {
 //	good        [0]     IMPLICIT NULL,
-//	revoked     [1]     IMPLICIT RevokedInfo,
+//	expired     [1]     IMPLICIT RevokedInfo,
 //	unknown     [2]     IMPLICIT UnknownInfo }
 
-type Response int
-
-const (
-	Good Response = iota
-	Revoked
-	Unkown
-)
-
-func (r Response) String() string {
-	switch r {
-	case Good:
-		return "good"
-	case Revoked:
-		return "revoked"
-	case Unkown:
-		return "unknown"
-	default:
-		log.Panicf("unknown ocsp response, %d\n", r)
-	}
-	return ""
-}
-
-var responseMap = map[int]Response{
-	ocsp.Good:    Good,
-	ocsp.Revoked: Revoked,
-	ocsp.Unknown: Unkown,
-}
-
-func Query(cert, issuer *x509.Certificate) []Response {
-	responses := make([]Response, len(cert.OCSPServer))
-	if cert.IsCA {
-		return responses
-	}
-	for i, responder := range cert.OCSPServer {
-		responses[i] = queryResponder(cert, issuer, responder)
-	}
-	return responses
+type OCSP struct {
+	Responder string
+	Good      bool
+	Revoked   bool
+	Unknown   bool
+	Error     error
 }
 
 const OCSPContentType = "application/ocsp-request"
 
-func queryResponder(cert, issuer *x509.Certificate, responder string) Response {
-	req, err := ocsp.CreateRequest(cert, issuer, nil)
+func VerifyChain(chain []*x509.Certificate) [][]OCSP {
+	ocsps := make([][]OCSP, len(chain))
+	if len(chain) == 1 {
+		return ocsps
+	}
+	for i, cert := range chain[:len(chain)-1] {
+		ocsps[i] = queryOCSP(cert, chain[i+1])
+	}
+	ocsps[len(ocsps)-1] = make([]OCSP, 0)
+	return ocsps
+}
+
+func queryOCSP(certificate, issuer *x509.Certificate) []OCSP {
+	responses := make([]OCSP, len(certificate.OCSPServer))
+	for i, responder := range certificate.OCSPServer {
+		responses[i] = newOCSPResponse(certificate, issuer, responder)
+	}
+	return responses
+}
+
+func newOCSPResponse(certificate, issuer *x509.Certificate, responder string) (response OCSP) {
+	response.Responder = responder
+	req, err := ocsp.CreateRequest(certificate, issuer, nil)
 	if err != nil {
-		log.Panic(err)
+		response.Error = errors.Wrap(err, "failed to create DER encoded OCSP request")
+		return
 	}
 	ret, err := http.Post(responder, OCSPContentType, bytes.NewReader(req))
 	if err != nil {
-		log.Panic(err)
+		response.Error = errors.Wrapf(err, "failed to retrieve HTTP POST response from %v", responder)
+		return
 	}
 	defer ret.Body.Close()
 	httpResp, err := ioutil.ReadAll(ret.Body)
 	if err != nil {
-		log.Panic(err)
+		response.Error = errors.Wrap(err, "failed to read the body of the OCSP response")
+		return
 	}
-	ocspResponse, err := ocsp.ParseResponse(httpResp, issuer)
+	serverResponse, err := ocsp.ParseResponse(httpResp, issuer)
 	if err != nil {
-		log.Panic(err)
+		response.Error = errors.Wrapf(err, "failed to parse the OCSP response")
+		return
 	}
-	return responseMap[ocspResponse.Status]
+	response.Good = serverResponse.Status == ocsp.Good
+	response.Revoked = serverResponse.Status == ocsp.Revoked
+	response.Unknown = serverResponse.Status == ocsp.Unknown
+	return
 }
-
-//func TestOCSP(t *testing.T) {
-//	var certs []*Certificate
-//	for _, c := range entrustChain {
-//		cert := parseCertificate(c, t)
-//		certs = append(certs, cert)
-//		t.Log(cert.OCSPServer, cert.Subject.CommonName)
-//	}
-//	leaf := certs[0]
-//	req, err := ocsp.CreateRequest(leaf.Certificate, certs[1].Certificate, nil)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	responder := leaf.OCSPServer[0]
-//	t.Log(responder)
-//	//encoded := make([]byte, base64.URLEncoding.EncodedLen(len(req)))
-//	//base64.URLEncoding.Encode(encoded, req)
-//	ret, err := http.Post(responder, "application/ocsp-request", bytes.NewReader(req))
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	defer ret.Body.Close()
-//	t.Log(ret.Request.URL)
-//	b, err := ioutil.ReadAll(ret.Body)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	resp, err := ocsp.ParseResponse(b, certs[1].Certificate)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	t.Log(resp.Status == ocsp.Good)
-//}
